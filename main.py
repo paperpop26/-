@@ -5,6 +5,7 @@ import os
 import re
 from datetime import date
 import openpyxl
+import pandas as pd
 
 # ── 상품 매핑 로드 ──────────────────────────────────────────
 def load_mapping(path):
@@ -33,20 +34,20 @@ def load_mapping(path):
 
 # ── 리뷰 파일 로드 ──────────────────────────────────────────
 def load_review(path):
-    wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
-    ws = wb.active
-    rows = list(ws.iter_rows(values_only=True))
-    wb.close()
+    # pandas로 읽기 (openpyxl이 일부 네이버 파일을 잘못 읽는 문제 방지)
+    df = pd.read_excel(path, header=None, dtype=str)
+    df = df.fillna('')
 
-    # 헤더 행 찾기
+    # 헤더 행 찾기 ('상품번호' 포함된 행)
     header_idx = 0
-    for i, row in enumerate(rows[:5]):
-        if row and any(c and '상품번호' in str(c) for c in row):
+    for i, row in df.iterrows():
+        if any('상품번호' in str(v) for v in row.values):
             header_idx = i
             break
 
-    headers = [str(c) if c else '' for c in rows[header_idx]]
-    data = [list(r) for r in rows[header_idx + 1:] if any(c for c in r)]
+    headers = list(df.iloc[header_idx])
+    data = [list(row) for _, row in df.iloc[header_idx + 1:].iterrows()
+            if any(v.strip() for v in row)]
     return headers, data
 
 # ── 변환 로직 ────────────────────────────────────────────────
