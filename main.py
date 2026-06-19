@@ -20,15 +20,17 @@ def load_mapping(path):
 
     mapping = {}
     for row in sheet.iter_rows(values_only=True):
-        ss, c24 = row[0], row[1]
-        if ss and c24:
-            try:
-                ss_key = str(int(float(ss)))
-                c24_val = int(float(c24))
-                if c24_val > 0:
-                    mapping[ss_key] = c24_val
-            except (ValueError, TypeError):
-                pass
+        # A열(0)→B열(1) 과 C열(2)→D열(3) 둘 다 매핑에 포함
+        pairs = [(row[0], row[1]), (row[2], row[3])]
+        for ss, c24 in pairs:
+            if ss and c24:
+                try:
+                    ss_key = str(int(float(ss)))
+                    c24_val = int(float(c24))
+                    if c24_val > 0:
+                        mapping[ss_key] = c24_val
+                except (ValueError, TypeError):
+                    pass
     wb.close()
     return mapping
 
@@ -109,7 +111,7 @@ def convert(mapping, headers, data, date_str):
         img_urls = [u.strip() for u in re.split(r'[,\n]+', img_raw) if u.strip().startswith('http')]
 
         out = [''] * len(OUT_HEADERS)
-        out[0]  = f"{date_str}{seq:06d}"
+        out[0]  = f"{date_str}{seq:06d}"  # 하이픈 없이: 20260618000001
         out[1]  = str(cafe24_id) if cafe24_id else ''
         out[2]  = rev_date
         out[3]  = rev_time
