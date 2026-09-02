@@ -2,15 +2,21 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import threading
 import os
+import sys
 import re
 import json
 from datetime import date
 import openpyxl
 import pandas as pd
 
-# ── 매핑 데이터 저장 경로 (exe와 같은 폴더) ──────────────────
+# ── 매핑 데이터 저장 경로 ──────────────────────────────────────
 def get_mapping_path():
-    base = os.path.dirname(os.path.abspath(__file__))
+    # PyInstaller exe 실행 시 → exe 파일 위치 기준
+    # 일반 py 실행 시 → 스크립트 위치 기준
+    if getattr(sys, 'frozen', False):
+        base = os.path.dirname(sys.executable)
+    else:
+        base = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(base, 'mapping.json')
 
 def load_mapping_from_file():
@@ -749,7 +755,7 @@ def convert(mapping, headers, data, date_str):
         img_urls = [u.strip() for u in re.split(r'[,\n]+', img_raw) if u.strip().startswith('http')]
 
         out = [''] * len(OUT_HEADERS)
-        out[0] = f"{date_str}{seq:06d}"
+        out[0] = f"{date_str}-{seq:06d}"
         out[1] = str(cafe24_id) if cafe24_id else ''
         out[2] = rev_date
         out[3] = rev_time
@@ -815,9 +821,7 @@ class App(tk.Tk):
         sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
         self.geometry(f'+{(sw-w)//2}+{(sh-h)//2}')
 
-    # ── UI 구성 ────────────────────────────────────────────────
     def _build_ui(self):
-        # 헤더
         header = tk.Frame(self, bg=PURPLE)
         header.pack(fill='x')
         tk.Label(header, text='📋  스마트스토어 → 브이리뷰 변환기',
@@ -828,9 +832,8 @@ class App(tk.Tk):
                  pady=0, padx=20).pack(anchor='w')
         tk.Frame(header, height=10, bg=PURPLE).pack()
 
-        # 탭
         nb = ttk.Notebook(self)
-        nb.pack(fill='both', expand=True, padx=0, pady=0)
+        nb.pack(fill='both', expand=True)
 
         tab1 = tk.Frame(nb, bg=BG)
         tab2 = tk.Frame(nb, bg=BG)
@@ -840,12 +843,10 @@ class App(tk.Tk):
         self._build_convert_tab(tab1)
         self._build_mapping_tab(tab2)
 
-    # ── 변환 탭 ────────────────────────────────────────────────
     def _build_convert_tab(self, parent):
         outer = tk.Frame(parent, bg=BG)
         outer.pack(fill='both', expand=True, padx=20, pady=16)
 
-        # STEP 1
         c1 = self._card(outer, '① 스마트스토어 리뷰 파일', '스마트스토어에서 다운받은 리뷰 엑셀')
         row1 = tk.Frame(c1, bg=CARD)
         row1.pack(fill='x', pady=(0, 6))
@@ -860,8 +861,7 @@ class App(tk.Tk):
                                       font=('Malgun Gothic', 9), fg='#636e72')
         self.review_status.pack(anchor='w')
 
-        # STEP 2
-        c2 = self._card(outer, '② 리뷰 ID 날짜', '리뷰_id 생성에 사용 (예: 20260114000001)')
+        c2 = self._card(outer, '② 리뷰 ID 날짜', '리뷰_id 생성에 사용 (예: 20260114-000001)')
         row2 = tk.Frame(c2, bg=CARD)
         row2.pack(fill='x', pady=(0, 2))
         tk.Label(row2, text='날짜 (YYYYMMDD):', bg=CARD,
@@ -870,7 +870,6 @@ class App(tk.Tk):
                  relief='flat', bg='#f0eeff',
                  font=('Malgun Gothic', 10)).pack(side='left', ipady=5)
 
-        # 변환 버튼
         self.convert_btn = tk.Button(
             outer, text='⚡  브이리뷰 이관 파일 생성',
             command=self._start_convert,
@@ -888,19 +887,16 @@ class App(tk.Tk):
                                      wraplength=440, justify='left')
         self.status_label.pack(anchor='w', pady=(0, 8))
 
-    # ── 매핑 관리 탭 ────────────────────────────────────────────
     def _build_mapping_tab(self, parent):
         outer = tk.Frame(parent, bg=BG)
         outer.pack(fill='both', expand=True, padx=20, pady=16)
 
-        # 안내
-        tk.Label(outer, text=f'현재 등록된 상품: {len(self.mapping)}개',
-                 bg=BG, font=('Malgun Gothic', 10, 'bold'), fg=PURPLE).pack(anchor='w', pady=(0, 8))
-        self.mapping_count_label = tk.Label(outer, text='', bg=BG,
-                                             font=('Malgun Gothic', 9), fg='#636e72')
-        self.mapping_count_label.pack(anchor='w')
+        top = tk.Frame(outer, bg=BG)
+        top.pack(fill='x', pady=(0, 8))
+        self.mapping_count_label = tk.Label(top, text=f'현재 등록된 상품: {len(self.mapping)}개',
+                                             bg=BG, font=('Malgun Gothic', 10, 'bold'), fg=PURPLE)
+        self.mapping_count_label.pack(side='left')
 
-        # 검색
         search_frame = tk.Frame(outer, bg=BG)
         search_frame.pack(fill='x', pady=(0, 8))
         tk.Label(search_frame, text='검색:', bg=BG, font=('Malgun Gothic', 9)).pack(side='left', padx=(0, 6))
@@ -909,23 +905,24 @@ class App(tk.Tk):
         tk.Entry(search_frame, textvariable=self.search_var, width=25,
                  relief='flat', bg='#f0eeff', font=('Malgun Gothic', 9)).pack(side='left', ipady=4)
 
-        # 테이블
+        table_frame = tk.Frame(outer, bg=BG)
+        table_frame.pack(fill='both', expand=True)
+
         cols = ('ss_num', 'cafe24_id', 'cafe24_name')
-        self.tree = ttk.Treeview(outer, columns=cols, show='headings', height=12)
-        self.tree.heading('ss_num',     text='스스 상품번호')
-        self.tree.heading('cafe24_id',  text='카페24 ID')
-        self.tree.heading('cafe24_name',text='카페24 상품명')
+        self.tree = ttk.Treeview(table_frame, columns=cols, show='headings', height=12)
+        self.tree.heading('ss_num',      text='스스 상품번호')
+        self.tree.heading('cafe24_id',   text='카페24 ID')
+        self.tree.heading('cafe24_name', text='카페24 상품명')
         self.tree.column('ss_num',      width=140, anchor='center')
         self.tree.column('cafe24_id',   width=90,  anchor='center')
         self.tree.column('cafe24_name', width=220)
 
-        sb = ttk.Scrollbar(outer, orient='vertical', command=self.tree.yview)
+        sb = ttk.Scrollbar(table_frame, orient='vertical', command=self.tree.yview)
         self.tree.configure(yscrollcommand=sb.set)
         self.tree.pack(side='left', fill='both', expand=True)
         sb.pack(side='left', fill='y')
         self._refresh_table()
 
-        # 버튼들
         btn_frame = tk.Frame(outer, bg=BG)
         btn_frame.pack(side='left', fill='y', padx=(12, 0))
 
@@ -938,10 +935,7 @@ class App(tk.Tk):
         btn('➕ 추가', self._add_item)
         btn('✏️ 수정', self._edit_item)
         btn('🗑 삭제', self._delete_item, color='#e17055')
-
         tk.Frame(btn_frame, bg=BG, height=20).pack()
-        tk.Label(btn_frame, text='─────', bg=BG, fg='#dfe6e9').pack()
-        tk.Frame(btn_frame, bg=BG, height=4).pack()
         btn('💾 저장', self._save_mapping, color='#00b894')
 
     def _refresh_table(self):
@@ -954,6 +948,7 @@ class App(tk.Tk):
             if keyword and keyword not in ss_num and keyword not in str(c24_id) and keyword not in c24_name.lower():
                 continue
             self.tree.insert('', 'end', values=(ss_num, c24_id, c24_name))
+        self.mapping_count_label.config(text=f'현재 등록된 상품: {len(self.mapping)}개')
 
     def _add_item(self):
         self._open_edit_dialog()
@@ -976,11 +971,10 @@ class App(tk.Tk):
         if messagebox.askyesno('확인', f'스스 번호 {ss_num} 을 삭제할까요?'):
             self.mapping.pop(ss_num, None)
             self._refresh_table()
-            self.status_label.config(text=f'삭제 완료. 💾 저장 버튼을 눌러 반영하세요.', fg='#e17055')
 
     def _save_mapping(self):
         save_mapping_to_file(self.mapping)
-        messagebox.showinfo('저장 완료', f'{len(self.mapping)}개 상품 매핑이 저장되었습니다!')
+        messagebox.showinfo('저장 완료', f'{len(self.mapping)}개 상품 매핑이 저장되었습니다!\n\n저장 위치: {get_mapping_path()}')
 
     def _open_edit_dialog(self, ss_num='', cafe24_id='', cafe24_name=''):
         dlg = tk.Toplevel(self)
@@ -989,8 +983,6 @@ class App(tk.Tk):
         dlg.resizable(False, False)
         dlg.grab_set()
 
-        # 가운데 배치
-        dlg.update_idletasks()
         x = self.winfo_x() + (self.winfo_width() - 360) // 2
         y = self.winfo_y() + (self.winfo_height() - 200) // 2
         dlg.geometry(f'360x210+{x}+{y}')
@@ -1026,7 +1018,6 @@ class App(tk.Tk):
             except ValueError:
                 messagebox.showwarning('알림', '카페24 ID는 숫자여야 해요.', parent=dlg)
                 return
-            # 수정 시 기존 키 삭제
             if is_edit and ss_num != new_ss:
                 self.mapping.pop(ss_num, None)
             self.mapping[new_ss] = {'cafe24_id': int(new_c24), 'cafe24_name': new_name, 'ss_name': ''}
@@ -1037,7 +1028,6 @@ class App(tk.Tk):
                   bg=PURPLE, fg='white', relief='flat', cursor='hand2',
                   font=('Malgun Gothic', 10, 'bold'), pady=8).pack(fill='x', padx=20, pady=10)
 
-    # ── 파일 선택 ─────────────────────────────────────────────
     def _pick_review(self):
         path = filedialog.askopenfilename(
             title='스마트스토어 리뷰 파일 선택',
@@ -1055,7 +1045,6 @@ class App(tk.Tk):
             self.review_headers = self.review_rows = None
             self.review_status.config(text=f'❌ 오류: {e}', fg='#d63031')
 
-    # ── 변환 실행 ─────────────────────────────────────────────
     def _start_convert(self):
         if not self.review_rows:
             messagebox.showwarning('알림', '리뷰 파일을 먼저 선택해주세요.')
